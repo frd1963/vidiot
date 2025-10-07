@@ -24,3 +24,5 @@ A utility for downloading videos and/or audio from websites
 | -qp  | <nobr>--queuepattern</nobr>      | **pattern** | ``` VIDIOT*.tsv ``` | *see explanation* | Expect requests to be files named according to the pattern "*pattern*".  This isn't interpreted as a regex, but just using the OS's filename pattern scheme.
 | -e   | <nobr>--executable</nobr>        | **path** | <nobr>```/opt/homebrew/bin/yt-dlp ```</nobr> | *see explanation* | Use **path** as the path to the executable that does the downloading.  This can be a full path or a relative path, but must exist.
 | -nr  | <nobr>--no_rm</nobr>             |||| Don't remove the request file(s) after processing the request.  The default is to remove the request file if the download exited successfully. 
+| -x   | <nobr>--del-requests</nobr>      | **num**    | ```0```    | *integer* | Delete all pre-existing request files (except the last *num*) before proceding.
+| -xx  | <nobr>--del-requests-exit</nobr> | **num**    | ```0```    | *integer* | Delete all pre-existing request files (except the last *num*) and then exit.

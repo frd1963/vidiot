@@ -11,7 +11,7 @@ VIDEO_AUDIO_BITRATE="320k"
 V_EXT="mp4"
 A_EXT="mp3"
 VA_EXT="m4a"
-VERBOSE=1
+VERBOSE=0
 DATA_DELIM="|"
 QUEUE_DIR="${HOME}/Downloads/"
 DOWNLOAD_DIR="${QUEUE_DIR}/DownloadedMusic"
@@ -25,16 +25,45 @@ PLAYLIST="yes"
 COOKIES_BROWSER_OPTION=""
 
 function puke {
-    echo "ERROR: "${1}
-    exit 1
+    local msg="${1}"
+    local code="${2:-1}"
+    echo "ERROR: "${msg}
+    exit "${code}"
+}
+
+function enforce_param {
+    local opt="${1:-unspecified}"
+    local num="${2:-0}"
+    local min="${3:-1}"
+    if [[ "${min}" -gt "${num}" ]] ; then
+        puke "option '${opt}' expects ${min} parameter(s), but ${num} provided" 10
+    fi
+}
+
+function log {
+    [ $VERBOSE -gt 0 ] && cat >&2
+}
+
+function logIt {
+    echo "${@}" | log
 }
 
 # Process the args
+CLI_CMD=()
 POSITIONAL=()
 while [[ $# -gt 0 ]] ; do
-    key="${1}"
+    option="${1}"
     shift
-    case $key in
+
+    # find non 'dash' options and group them as params for the current option
+    params=()
+    while [[ -n "${1}" && ! ${1} =~ ^- ]]; do
+        params+=("${1}")
+        shift
+    done
+
+    logIt "processing option '${option}' with params (${params[@]})"
+    case $option in
         -l|--loop)
             LOOP=1
         ;;
@@ -45,34 +74,41 @@ while [[ $# -gt 0 ]] ; do
             MTIME=""
         ;;
         -vf|--videoformat)
-            V_EXT="${1}"
+            enforce_param "${option}" "${#params[@]}"
+            V_EXT="${params[0]}"
             shift
         ;;
         -cb|--cookies-from-browser)
-            COOKIES_BROWSER_OPTION="--cookies-from-browser ${1}"
-            shift
+            enforce_param "${option}" "${#params[@]}"
+            COOKIES_BROWSER_OPTION="--cookies-from-browser ${params[0]}"
         ;;
         -af|--audioformat)
+            enforce_param "${option}" "${#params[@]}"
             A_EXT="${1}"
             shift
         ;;
         -vaf|--videoaudioformat)
+            enforce_param "${option}" "${#params[@]}"
             VA_EXT="${1}"
             shift
         ;;
         -ab|--audiobitrate)
+            enforce_param "${option}" "${#params[@]}"
             AUDIO_BITRATE="${1}"
             shift
         ;;
         -vab|--videoaudiobitrate)
+            enforce_param "${option}" "${#params[@]}"
             VIDEO_AUDIO_BITRATE="${1}"
             shift
         ;;
         -Mh|--maxheight)
+            enforce_param "${option}" "${#params[@]}"
             MAX_VID_HEIGHT="${1}"
             shift
         ;;
         -mh|--minheight)
+            enforce_param "${option}" "${#params[@]}"
             MIN_VID_HEIGHT="${1}"
             shift
         ;;
@@ -80,6 +116,7 @@ while [[ $# -gt 0 ]] ; do
             VERBOSE=1
         ;;
         -s|--sleeptime)
+            enforce_param "${option}" "${#params[@]}"
             SLEEP_TIME="${1}"
             shift
         ;;
@@ -87,33 +124,51 @@ while [[ $# -gt 0 ]] ; do
             SIMULATE=1
         ;;
         -qd|--queuedir)
+            enforce_param "${option}" "${#params[@]}"
             QUEUE_DIR="${1}"
             shift
         ;;
         -qp|--queuepattern)
+            enforce_param "${option}" "${#params[@]}"
             QUEUE_PATTERN="${1}"
             shift
         ;;
         -d|--downloaddir)
+            enforce_param "${option}" "${#params[@]}"
             DOWNLOAD_DIR="${1}"
             shift
         ;;
         -x|--executable)
+            enforce_param "${option}" "${#params[@]}"
             DL_CMD="${1}"
-            shift
+            shift``
         ;;
         -n|--no_rm)
             RM_FILE=0
         ;;
+        -x|--del-requests)
+            keepReqsNum="${1:-0}"
+            if [[ "${keepReqsNum}" =~ [^0-9] ]] ; then
+                puke "option ${option} doesn't understand non-number parameter '${keepReqsNum}'" 10
+            fi
+            DEL_REQUESTS="${keepReqsNum}"
+            DEL_EXIT="no"
+        ;;
+        -xx|--del-requests-exit)
+            keepReqsNum="${1:-0}"
+            if [[ "${keepReqsNum}" =~ [^0-9] ]] ; then
+                puke "option ${option} doesn't understand non-number parameter '${keepReqsNum}'" 10
+            fi
+            DEL_REQUESTS="${keepReqsNum}"
+            DEL_EXIT="yes"
+        ;;
+        -cli) CLI_CMD+="${params[@]}"
+        ;;
         *)
-            puke "Unknown option '${key}'"
+            puke "Unknown option '${option}'"
         ;;
     esac
 done
-
-function log {
-    [ $VERBOSE -gt 0 ] && cat
-}
 
 # function getFormats
 function downloadMp3 {
@@ -195,9 +250,18 @@ END
     echo "Finished downloading $url" | log
 }
 
+function getRequestFiles {
+    local loc="${1:-${QUEUE_DIR}}"
+    \ls -tr "${loc}"/${QUEUE_PATTERN} 2>/dev/null
+}
+
 function getNextFile {
-    local loc="${1}"
-    \ls -tr "${loc}"/${QUEUE_PATTERN} 2>/dev/null| head -1 
+    local loc="${1:-${QUEUE_DIR}}"
+    local files file
+    while IFS=\n read -r file; do
+        files+=("${file}")
+    done < <(getRequestFiles "${loc}")
+    if [[ "${#files}" ]] ; then echo "${files[0]}"; fi
 }
 
 function goGetEm {
@@ -218,5 +282,42 @@ function goGetEm {
     done
 }
 
-cd "$DOWNLOAD_DIR"
-goGetEm
+function listOldRequests {
+    local keep="${1:-0}"
+    ((keep++))
+    getRequestFiles "${QUEUE_DIR}" | tail -n +"${keep}"
+}
+
+function deleteOldRequests {
+    # find all existing requests, and delete all but the most recent ${DEL_REQUESTS}
+    local keep="${1:-0}"
+    local file
+    local files2delete
+    while IFS=\n read -r file; do
+        logIt "found old file '${file}'"
+        files2delete+=("${file}")
+    done < <(listOldRequests "${keep}")
+    logIt "files2delete: ("${files2delete[@]}")"
+    for file in "${files2delete[@]}" ; do
+        [[ -z "${file}" ]] && continue
+        logIt "Removing old request file '${file}'"
+        \rm "${file}" || puke "Unable to remove old request file '${file}'" 5
+    done
+    if [[ "${DEL_EXIT}" == "yes" ]] ; then 
+        exit
+    fi
+}
+
+function main {
+    echo "skipping main"
+    # deleteOldRequests
+    # cd "$DOWNLOAD_DIR"
+    # goGetEm
+}
+
+if [[ -n "${CLI_CMD}" ]] ; then
+    logIt "running CLI_CMD='${CLI_CMD}"
+    ${CLI_CMD}
+else
+    main
+fi

@@ -27,7 +27,7 @@ COOKIES_BROWSER_OPTION=""
 function puke {
     local msg="${1}"
     local code="${2:-1}"
-    echo "ERROR: "${msg}
+    echo "ERROR: "${msg}>&2
     exit "${code}"
 }
 
@@ -47,6 +47,20 @@ function log {
 function logIt {
     echo "${@}" | log
 }
+
+function finish {
+    local code="${1:-0}"
+    if [[ "${code}" -ne '0' ]] ; then
+        logIt "Ending ${0} with exit code=${code}"
+    else
+        logIt "Ending ${0} normally"
+    fi
+    exit "${code}"
+}
+
+# Setup signal handlers
+trap "finish 0" EXIT
+trap "finish 2" SIGINT
 
 # Process the args
 CLI_CMD=()
@@ -190,7 +204,7 @@ function downloadMp3 {
         if [[ $status -gt 0 ]] ; then
             echo "'${DL_CMD}' exited with status=${status}"
             ${DL_CMD} -F "$url"
-            puke "Failed to download audio '$url'"
+            puke "Failed to download audio '$url'" "${status}"
         fi
     fi
 }
@@ -212,18 +226,47 @@ function downloadVideo {
         echo $CMD | bash
         local status=$?
         if [[ $status -gt 0 ]] ; then
-            echo "'${DL_CMD}' exited with status=${status}"
-            ${DL_CMD} -F "$url"
-            puke "Failed to download audio '$url'"
+            echo "'${CMD}' exited with status=${status}"
+            puke "Failed to download audio '$url'" "${status}"
         fi
     fi
 }
 
+function getParamsFromFilename {
+    local filename="${1}"
+    local params param
+    declare -a params
+
+    logIt "getting params from file:'${filename}'"
+
+    if [[ ! $filename =~ /[^[:space:]] ]] ; then puke "filename is blank" ; fi
+
+    params+=("$(cat "${filename}" | cut -d"$DATA_DELIM" -f1)")
+    params+=("$(cat "${filename}" | cut -d"$DATA_DELIM" -f2)")
+    params+=("$(cat "${filename}" | cut -d"$DATA_DELIM" -f3-)")
+
+    for param in params ; do
+        if [[ -z $param ]] ; then
+            puke "file='${filename}' produced blank param(s): "$(declare -p params)""
+        fi
+    done
+    
+    declare -p params
+}
+
 function process {
-    local filename=${1}
-    local avformat=$(cat "${filename}" | cut -d"$DATA_DELIM" -f1)
-    local url=$(cat "${filename}" | cut -d"$DATA_DELIM" -f2)
-    local name=$(cat "${filename}" | cut -d"$DATA_DELIM" -f3-)
+    local filename="${1}"
+    local url avformat name
+
+    logIt "Processing filename='${filename}'"
+    eval "$(getParamsFromFilename "${filename}")"
+
+    avformat="${params[0]}"
+    url="${params[1]}"
+    name="${params[2]}"
+
+    # remove the 'start radio' option from the url
+    url="${url/\&start_radio=.//}"
 
     log << END
 file: $filename
@@ -232,12 +275,12 @@ file: $filename
     name:   ${name}
 END
 
-    case $avformat in 
+    case "${avformat}" in 
     audio)
-        downloadMp3 $url
+        downloadMp3 "${url}"
         ;;
     video)
-        downloadVideo $url
+        downloadVideo "${url}"
         ;;
     *)
         puke "Unrecognized format '${avformat}'"
@@ -247,7 +290,7 @@ END
         echo "Removing '$filename'" | log
         \rm "${filename}"
     fi
-    echo "Finished downloading $url" | log
+    echo "Finished downloading ${url}" | log
 }
 
 function getRequestFiles {
@@ -258,6 +301,7 @@ function getRequestFiles {
 function getNextFile {
     local loc="${1:-${QUEUE_DIR}}"
     local files file
+    declare -a files
     while IFS=\n read -r file; do
         files+=("${file}")
     done < <(getRequestFiles "${loc}")
@@ -309,10 +353,10 @@ function deleteOldRequests {
 }
 
 function main {
-    echo "skipping main"
+    # echo "skipping main"
     # deleteOldRequests
-    # cd "$DOWNLOAD_DIR"
-    # goGetEm
+    cd "$DOWNLOAD_DIR"
+    goGetEm
 }
 
 if [[ -n "${CLI_CMD}" ]] ; then

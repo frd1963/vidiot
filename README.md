@@ -26,6 +26,7 @@ A utility for downloading videos and/or audio from websites
 | -nr  | <nobr>--no_rm</nobr>             |||| Don't remove the request file(s) after processing the request.  The default is to remove the request file if the download exited successfully. 
 | -x   | <nobr>--del-requests</nobr>      | **num**    | ```0```    | *integer* | Delete all pre-existing request files (except the last *num*) before proceding.
 | -xx  | <nobr>--del-requests-exit</nobr> | **num**    | ```0```    | *integer* | Delete all pre-existing request files (except the last *num*) and then exit.
+| -U   | <nobr>--update                   |||| Update the yt-dlp library
 
 ## Examples
 ```bash download.bash -l```

@@ -157,6 +157,13 @@ while [[ $# -gt 0 ]] ; do
             DL_CMD="${1}"
             shift``
         ;;
+        -U|--update)
+            # This assumes brew was used to install yt-dlp
+            brew upgrade yt-dlp && \
+            echo "yt-dlp updated successfully" || \
+            puke "yt-dlp update failed"
+            # To Do: update in other ways if not using brew
+        ;;
         -n|--no_rm)
             RM_FILE=0
         ;;

@@ -1,0 +1,20 @@
+function(format='%FORMAT%') {
+  const prefix = 'VIDIOTQ_';
+  const msgDelim = '|';
+  const text = document.getElementsByTagName('title')[0].text;
+  const start = 0;
+  const end = text.indexOf(' - YouTube');
+  const name = text.substring(start, end);
+  const queryString = window.location.search;
+  const urlParams = new URLSearchParams(queryString);
+  const v = urlParams.get('v');
+  var clickable = document.createElement('a');
+  clickable.download = `${prefix}${v}_${name}.tsv`;
+  clickable.type = 'application/json';
+  const msg = [format, document.URL, name].join(msgDelim);
+  var blob = new Blob([msg]);
+  document.body.appendChild(clickable);
+  clickable.href = URL.createObjectURL(blob);
+  clickable.click();
+  clickable.parentNode.removeChild(clickable);
+}
